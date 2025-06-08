@@ -1,0 +1,736 @@
+---
+title: "Dashboard d'Emigració i Desenvolupament Global"
+subtitle: "1990-2020 | Autor: Sergi Bartra Juan | UOC"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: bootstrap
+    css: styles.css
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+# Cargar librerías necesarias
+library(flexdashboard)
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(DT)
+library(plotly)
+library(leaflet)
+library(sf)
+library(rnaturalearth)
+library(RColorBrewer)
+library(countrycode) # <<< NOVA LLIBRERIA: La clau de la solució
+
+# Función para cargar datos de manera segura (sense canvis)
+load_data_safely <- function() {
+  tryCatch({
+    if (file.exists("globalDevelopment.csv")) {
+      data <- read.csv("globalDevelopment.csv", stringsAsFactors = FALSE, encoding = "UTF-8")
+      return(data)
+    } else {
+      warning("Archivo globalDevelopment.csv no encontrado. Creando datos de ejemplo.")
+      return(create_sample_data())
+    }
+  }, error = function(e) {
+    warning("Error al cargar datos: ", e$message, ". Creando datos de ejemplo.")
+    return(create_sample_data())
+  })
+}
+
+# Función para crear datos de ejemplo si no existe el archivo CSV (sense canvis)
+create_sample_data <- function() {
+  # ... (el teu codi aquí, sense canvis)
+  countries <- c("Spain", "France", "Germany", "Italy", "Portugal", "United Kingdom", 
+                 "United States of America", "Canada", "Australia", "Japan", "Russia") # He afegit Rússia per provar
+  years <- seq(1990, 2020, 5)
+  regions <- c("Europe", "Europe", "Europe", "Europe", "Europe", "Europe", 
+               "North America", "North America", "Oceania", "Asia", "Europe")
+  
+  data <- expand.grid(country = countries, year = years) %>%
+    mutate(
+      region = rep(regions, each = length(years)),
+      lifeexpectency = runif(n(), 60, 85),
+      share = runif(n(), 1, 15),
+      gdppercapita = runif(n(), 10000, 80000),
+      politicalstability = runif(n(), -2, 95),
+      ruleoflaw = runif(n(), -1, 2),
+      tertiaryeducation = runif(n(), 20, 80),
+      unemployment = runif(n(), 2, 20),
+      undernourishment = runif(n(), 1, 10)
+    )
+  
+  return(data)
+}
+
+
+# Cargar y preparar datos
+data <- load_data_safely()
+
+# Limpieza de datos y renombrado de columnas
+df <- data %>%
+  {if("X" %in% names(.)) select(., -X) else .} %>%
+  rename_with(tolower) %>%
+  rename(
+    life_expectancy = lifeexpectency,
+    gdp_per_capita = gdppercapita,
+    political_stability = politicalstability,
+    rule_of_law = ruleoflaw,
+    tertiary_education = tertiaryeducation
+  )
+
+# Primer, fem una neteja manual per casos molt específics que 'countrycode' pot no reconèixer.
+df <- df %>%
+  mutate(country_for_join = case_when(
+    country == "eSwatini" ~ "Swaziland", # countrycode reconeix millor "Swaziland"
+    TRUE ~ country
+  ))
+
+# Ara convertim els noms a un codi estàndard ISO3. Això és molt més fiable.
+df$join_key <- countrycode(df$country_for_join, 
+                           origin = "country.name", 
+                           destination = "iso3c",
+                           custom_match = c('Kosovo' = 'XKX')) # Afegim un custom match per Kosovo si cal
+
+# Cargar datos geoespaciales
+if (file.exists("world_map_data.rds")) {
+  world_map_sf <- readRDS("world_map_data.rds")
+} else {
+  stop("El archivo del mapa 'world_map_data.rds' no se encontró. Por favor, genéralo y añádelo al directorio.")
+}
+
+world_map_sf$join_key <- countrycode(world_map_sf$name_long, 
+                                     origin = "country.name", 
+                                     destination = "iso3c",
+                                     custom_match = c('Kosovo' = 'XKX'))
+
+world_data <- world_map_sf %>%
+  left_join(df, by = "join_key")
+
+
+# Variables numéricas (sense canvis)
+numeric_indicators <- c(
+  "Esperança de vida (anys)" = "life_expectancy",
+  "Percentatge d'emigració (%)" = "share",
+  "PIB per càpita ($)" = "gdp_per_capita",
+  "Estabilitat política (0-100)" = "political_stability",
+  "Estat de dret (-2.5 a 2.5)" = "rule_of_law",
+  "Educació terciària (%)" = "tertiary_education",
+  "Taxa d'atur (%)" = "unemployment",
+  "Desnutrició (%)" = "undernourishment"
+)
+
+# Tema oscuro para los gráficos de ggplot
+theme_dark_custom <- function() {
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#2c3038", color = NA),
+    panel.background = element_rect(fill = "#2c3038", color = NA),
+    panel.grid.major = element_line(color = "#444850"),
+    panel.grid.minor = element_blank(),
+    legend.background = element_rect(fill = "transparent", color = NA),
+    legend.key = element_rect(fill = "transparent", color = NA),
+    text = element_text(color = "#e0e0e0", family = "Roboto"),
+    axis.text = element_text(color = "#b0b0b0"),
+    axis.title = element_text(color = "#e0e0e0", face = "bold"),
+    plot.title = element_text(color = "#ffffff", hjust = 0.5, face = "bold", size = 16),
+    plot.subtitle = element_text(color = "#b0b0b0", hjust = 0.5),
+    legend.title = element_text(color = "#e0e0e0"),
+    legend.text = element_text(color = "#b0b0b0")
+  )
+}
+
+# Diccionari de variables en català (per al pop-up)
+variable_descriptions_ca <- list(
+  `Esperança de vida` = "Mitjana d'anys de vida esperats en néixer.",
+  `Percentatge d'emigració` = "Percentatge de la població que viu a l'estranger.",
+  `PIB per càpita` = "Ingrés mitjà per persona en USD.",
+  `Estabilitat política` = "Percepció d'estabilitat i absència de violència (escala 0-100).",
+  `Estat de dret` = "Confiança en les institucions legals (escala -2.5 a 2.5).",
+  `Educació terciària` = "Taxa de matriculació en educació post-secundària.",
+  `Taxa d'atur` = "Força laboral sense feina però en cerca activa.",
+  `Desnutrició` = "Taxa d'ingesta insuficient d'aliments."
+)
+```
+
+Sidebar {.sidebar}
+=====================================
+
+```{r}
+div(style = "margin-bottom: 25px; margin-top: 15px", # Crea un espai a sota del botó
+    actionButton("show_dict_btn", "Diccionari de Variables", 
+                 icon = icon("book-open"), 
+                 width = "100%",
+                 class = "btn-custom-grey") # Mantenim la classe per l'estil gris
+)
+
+# Lògica del servidor per al modal
+observeEvent(input$show_dict_btn, {
+  showModal(modalDialog(
+    title = tags$h4("Diccionari de Variables", style="color: #61dafb; font-weight: bold;"),
+    tagList(
+      lapply(seq_along(variable_descriptions_ca), function(i) {
+        p(style="margin-bottom: 10px; line-height: 1.6;",
+          strong(paste0(names(variable_descriptions_ca)[i], ":")),
+          " ",
+          variable_descriptions_ca[[i]]
+        )
+      })
+    ),
+    footer = modalButton("Tancar"),
+    easyClose = TRUE,
+    fade = TRUE
+  ))
+})
+
+hr()
+
+# Controls principals del sidebar
+selectInput("indicator_selector", 
+            "Indicador Principal:", 
+            choices = numeric_indicators, 
+            selected = "life_expectancy")
+
+sliderInput("year_slider", 
+            "Any:", 
+            min = min(df$year, na.rm = TRUE), 
+            max = max(df$year, na.rm = TRUE), 
+            value = max(df$year, na.rm = TRUE), 
+            step = 5, 
+            sep = "",
+            animate = animationOptions(interval = 1500, loop = TRUE))
+
+hr()
+
+selectInput("selected_country", 
+            "Selecciona un país:", 
+            choices = sort(unique(df$country)),
+            selected = if("Spain" %in% df$country) "Spain" else df$country[1])
+
+hr()
+
+h4("Correlacions")
+selectInput("scatter_x", 
+            "Variable Eix X:", 
+            choices = numeric_indicators, 
+            selected = "gdp_per_capita")
+
+selectInput("scatter_y", 
+            "Variable Eix Y:", 
+            choices = numeric_indicators, 
+            selected = "life_expectancy")
+
+hr()
+
+selectizeInput("multi_country_selector", 
+               "Selecciona països per comparar:",
+               choices = sort(unique(df$country)),
+               selected = c("Spain", "China", "United States of America", "Nigeria", "Brazil"),
+               multiple = TRUE,
+               options = list(plugins = list('remove_button')))
+```
+
+
+Sobre el Dashboard {.storyboard}
+=====================================
+
+<div style="padding: 20px; max-width: 1200px; margin: auto; text-align: left; line-height: 1.7;">
+
+### Objectiu del Projecte
+
+Aquest dashboard interactiu ofereix una exploració visual de les dades sobre **emigració i desenvolupament global** per al període 1990-2020. L'objectiu és proporcionar eines intuïtives per analitzar les tendències, les relacions entre indicadors i les desigualtats a escala mundial, regional i nacional.
+
+-   **Enllaç al Dataset:** [Global Emigration and Development a Kaggle](https://www.kaggle.com/datasets/mahyarentezari/emigration)
+-   **Llicència:** Creative Commons (CC BY-SA 4.0) - [Veure llicència](https://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+Aquesta eina està dissenyada per ajudar a usuaris com estudiants, analistes, periodistes o ciutadans curiosos a respondre preguntes clau sobre desenvolupament i migració:
+
+**1. Visió General (Pestanya: *Panorama Global*)**
+
+*   Quines són les diferències més notables en indicadors clau com l'esperança de vida o el PIB per càpita entre les diferents regions del món?
+*   Com han canviat aquestes diferències entre 1990 i 2020?
+*   Quins països lideren o queden a la cua en els diferents indicadors en un any concret?
+
+**2. Anàlisi Comparativa (Pestanya: *Anàlisi per Regió*)**
+
+*   És possible identificar visualment "clusters" o grups de països que comparteixen perfils socioeconòmics similars o que han seguit trajectòries de desenvolupament paral·leles?
+*   Quins països han experimentat les millores o deterioraments més significatius en certs indicadors durant les últimes tres dècades?
+
+**3. Anàlisi Detallada (Pestanya: *Anàlisi per País*)**
+
+*   Com es posiciona un país específic (per exemple, Espanya) en comparació amb els seus veïns regionals en els diversos indicadors de desenvolupament al llarg del temps?
+*   Existeix una relació observable entre la taxa d'emigració d'un país i altres factors com el nivell d'atur, l'índex de l'estat de dret, o el percentatge de població amb educació terciària?
+
+---
+
+### Tecnologies i Fonts
+
+<div style="display: flex; justify-content: space-between;">
+<div style="width: 48%;">
+**Tecnologies Utilitzades:**
+
+- R & R Markdown per a l'anàlisi i l'estructura.
+- Flexdashboard per al layout del dashboard.
+- Shiny per a la interactivitat.
+- Plotly per a gràfics dinàmics.
+- Leaflet per als mapes interactius.
+- DT (DataTables) per a taules.
+- dplyr & tidyr per a la manipulació de dades.
+</div>
+<div style="width: 48%;">
+**Fonts de Dades Originals:**
+
+- **Pew Research**: Religious Composition of the World’s Migrants, 1990-2020
+- **World Bank**: Population (SP.POP.TOTL)
+- **World Bank**: Health Indicators: Life expectancy and undernourishment
+- **World Bank**: Unemployment Rate (SL.UEM.TOTL.ZS)
+- **World Bank**: GDP per Capita (NY.GDP.PCAP.CD)
+- **World Bank**: Political Stability Index (PV.PER.RNK)
+- **World Bank**: Rule of Law – Worldwide Governance Indicators
+- **World Bank**: Tertiary Education Enrollment (SE.TER.ENRR)
+
+</div>
+</div>
+
+---
+
+**Autor:** Sergi Bartra Juan | **Estudis:** Visualització de dades (UOC) | Juny de 2025
+</div>
+
+
+Panorama Global - Mapa i Rànquing
+=====================================
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+### Mapa Mundial Interactiu
+
+```{r}
+output$world_map <- renderLeaflet({
+  req(input$indicator_selector, input$year_slider)
+  
+  map_data <- world_data %>%
+    filter(year == input$year_slider) %>%
+    mutate(indicator_value = .data[[input$indicator_selector]])
+  
+  if(nrow(map_data) == 0 || all(is.na(map_data$indicator_value))) {
+    return(leaflet() %>%
+           addProviderTiles("CartoDB.DarkMatter") %>%
+           setView(lng = 10, lat = 30, zoom = 2) %>%
+           addControl("No hi ha dades disponibles per a l'any seleccionat", 
+                     position = "topright"))
+  }
+  
+  pal <- colorNumeric(palette = "YlOrRd", 
+                      domain = map_data$indicator_value, 
+                      na.color = "#4a5263")
+  
+  leaflet(map_data) %>%
+    addProviderTiles("CartoDB.DarkMatter") %>%
+    setView(lng = 10, lat = 30, zoom = 2) %>%
+    addPolygons(
+      fillColor = ~pal(indicator_value),
+      weight = 1,
+      opacity = 1,
+      color = "#22252a",
+      dashArray = "3",
+      fillOpacity = 0.8,
+      highlightOptions = highlightOptions(
+        weight = 3,
+        color = "#61dafb",
+        fillOpacity = 1,
+        bringToFront = TRUE
+      ),
+      label = ~paste(name_long, ": ", round(indicator_value, 2)),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"
+      )
+    ) %>%
+    addLegend(pal = pal, 
+              values = ~indicator_value, 
+              opacity = 0.9, 
+              title = names(numeric_indicators[numeric_indicators == input$indicator_selector]),
+              position = "bottomright",
+              className = "custom-legend",
+              na.label = "")
+})
+
+leafletOutput("world_map", height = "500px")
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Top 10 Països (Any Seleccionat) {data-height=800}
+
+```{r}
+renderDT({
+  req(input$indicator_selector, input$year_slider)
+  
+  top_countries <- df %>%
+    filter(year == input$year_slider) %>%
+    select(country, indicator = !!input$indicator_selector) %>%
+    filter(!is.na(indicator)) %>%
+    arrange(desc(indicator)) %>%
+    slice_head(n = 10) %>%
+    mutate(indicator = round(indicator, 2))
+  
+  if(nrow(top_countries) == 0) {
+    return(datatable(data.frame(Missatge = "No hi ha dades disponibles"),
+                    options = list(dom = 't'), class = 'cell-border stripe'))
+  }
+  
+  colnames(top_countries) <- c("País", names(numeric_indicators[numeric_indicators == input$indicator_selector]))
+  
+  datatable(top_countries, 
+            rownames = FALSE,
+            options = list(pageLength = 10, 
+                           dom = 't'), # Hem eliminat l'opció scrollY
+            class = 'cell-border stripe') %>%
+    formatStyle(columns = 1:2, 
+                backgroundColor = '#2c3038', 
+                color = '#e0e0e0')
+}, server = FALSE)
+```
+
+### Estadístiques Globals
+
+```{r}
+renderUI({
+  req(input$indicator_selector, input$year_slider)
+  
+  global_stats <- df %>%
+    filter(year == input$year_slider) %>%
+    summarise(
+      mean_val = round(mean(.data[[input$indicator_selector]], na.rm = TRUE), 2),
+      median_val = round(median(.data[[input$indicator_selector]], na.rm = TRUE), 2),
+      max_val = round(max(.data[[input$indicator_selector]], na.rm = TRUE), 2),
+      min_val = round(min(.data[[input$indicator_selector]], na.rm = TRUE), 2),
+      countries_with_data = sum(!is.na(.data[[input$indicator_selector]]))
+    )
+  
+  tagList(
+    p(strong("Mitjana: "), if(is.na(global_stats$mean_val)) "N/A" else global_stats$mean_val),
+    p(strong("Mediana: "), if(is.na(global_stats$median_val)) "N/A" else global_stats$median_val),
+    p(strong("Màxim: "), if(is.na(global_stats$max_val)) "N/A" else global_stats$max_val),
+    p(strong("Mínim: "), if(is.na(global_stats$min_val)) "N/A" else global_stats$min_val),
+    p(strong("Països amb dades: "), global_stats$countries_with_data)
+  )
+})
+```
+
+
+
+Anàlisi per Regió: Desigualtat i Trajectòria {data-orientation=rows}
+=====================================
+
+Row {data-height=300}
+-----------------------------------------------------------------------
+
+### Distribució Regional per a l'Any Seleccionat
+
+```{r}
+renderPlotly({
+  req(input$indicator_selector, input$year_slider)
+  
+  regional_data <- df %>%
+    filter(year == input$year_slider) %>%
+    filter(!is.na(.data[[input$indicator_selector]]))
+  
+  if (nrow(regional_data) == 0) {
+    p <- ggplot() +
+      labs(title = "No hi ha dades disponibles per a la selecció actual") +
+      theme_void() + 
+      theme(
+        plot.background = element_rect(fill = "#2c3038", color = NA),
+        panel.background = element_rect(fill = "#2c3038", color = NA),
+        plot.title = element_text(color = "#ffffff", hjust = 0.5)
+      )
+    return(ggplotly(p))
+  }
+  
+  p <- ggplot(regional_data, aes(x = reorder(region, .data[[input$indicator_selector]], median, na.rm=TRUE), 
+                                 y = .data[[input$indicator_selector]], 
+                                 fill = region)) +
+    geom_boxplot(alpha = 0.7, 
+                 color = "#b0b0b0",             # Color del contorn del boxplot
+                 outlier.color = "#ff7518",     # Color dels outliers
+                 outlier.size = 2,
+                 outlier.alpha = 0.7) +
+    coord_flip() +
+    labs(
+      x = "Regió",
+      y = names(numeric_indicators)[numeric_indicators == input$indicator_selector]
+    ) +
+    scale_fill_brewer(palette = "Set2") +
+    theme_dark_custom() +
+    theme(
+      legend.position = "none",
+      axis.text.y = element_text(size = 10, face = "bold"),
+      panel.grid.major.y = element_blank()
+    )
+  
+  ggplotly(p, tooltip = "y") %>%
+    config(displayModeBar = FALSE) %>%
+    layout(
+      plot_bgcolor = "#2c3038",  # Fons de l'àrea del gràfic
+      paper_bgcolor = "#2c3038" # Fons fora del gràfic
+    )
+})
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Trajectòries dels Països i Indicadors Seleccionats
+
+```{r}
+renderPlotly({
+  req(input$scatter_x, input$scatter_y, input$multi_country_selector)
+  
+  trajectory_data <- df %>%
+    filter(country %in% input$multi_country_selector) %>%
+    select(country, year, region, x_var = !!input$scatter_x, y_var = !!input$scatter_y, population) %>%
+    na.omit()
+  
+  if (nrow(trajectory_data) == 0) {
+    p <- ggplot() + 
+      labs(title = "No hi ha dades suficients per a la selecció actual") +
+      theme_void() + 
+      theme(plot.background = element_rect(fill = "#2c3038", color = NA),
+            plot.title = element_text(color = "#ffffff", hjust = 0.5))
+    return(ggplotly(p))
+  }
+  
+  # Assegurar que la regió no tingui NAs per al color
+  if(!"region" %in% names(trajectory_data) || all(is.na(trajectory_data$region))) {
+    trajectory_data$region <- "Sense classificar"
+  } else {
+    trajectory_data$region <- tidyr::replace_na(trajectory_data$region, "Sense classificar")
+  }
+  
+  p <- ggplot(trajectory_data, aes(x = x_var, y = y_var, 
+                                   size = population, color = region,
+                                   frame = year, ids = country, text = country)) +
+    geom_point(alpha = 0.8) +
+    # Afegim una línia de trajectòria
+    geom_path(aes(group = country), alpha = 0.4, size = 0.5) +
+    scale_x_log10(labels = scales::comma) +
+    scale_size(range = c(2, 20), guide = "none") +
+    scale_color_brewer(palette = "Set2") +
+    labs(
+      x = paste(names(numeric_indicators)[numeric_indicators == input$scatter_x], "(escala log)"),
+      y = names(numeric_indicators)[numeric_indicators == input$scatter_y],
+      color = "Regió"
+    ) +
+    theme_dark_custom() +
+    theme(legend.position = "none")
+
+  ggplotly(p, tooltip = c("text", "x", "y")) %>%
+    animation_opts(
+      frame = 1800,
+      transition = 400,
+      redraw = FALSE
+    ) %>%
+    animation_slider(
+      currentvalue = list(prefix = "Any: ", font = list(color="#61dafb"))
+    ) %>%
+    config(displayModeBar = FALSE)
+})
+```
+
+
+Anàlisi per País - Mètriques i Tendències
+=====================================
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Evolució Temporal del País Seleccionat
+
+```{r}
+renderPlotly({
+  req(input$selected_country, input$indicator_selector)
+  
+  country_data <- df %>%
+    filter(country == input$selected_country) %>%
+    drop_na(!!sym(input$indicator_selector))
+  
+  if (nrow(country_data) < 2) {
+    p <- ggplot() +
+      labs(title = paste("No hi ha prou dades per a", input$selected_country)) +
+      theme_void() + theme(plot.background = element_rect(fill="#2c3038", color=NA))
+    return(ggplotly(p))
+  }
+  
+  p <- ggplot(country_data, aes(x = year, y = .data[[input$indicator_selector]])) +
+    geom_line(color = "#61dafb", size = 1.2) +
+    geom_point(color = "white", size = 3, shape = 21, fill = "#61dafb") +
+    labs(x = "Any", 
+         y = names(numeric_indicators)[numeric_indicators == input$indicator_selector]) +
+    theme_dark_custom()
+  
+  ggplotly(p) %>% config(displayModeBar = FALSE)
+})
+```
+
+### Comparativa Regional
+
+```{r}
+renderPlotly({
+  req(input$selected_country, input$indicator_selector, input$year_slider)
+  
+  country_info <- df %>% filter(country == input$selected_country)
+  
+  if (nrow(country_info) == 0) {
+    p <- ggplot() + labs(title = "País no trobat") + 
+      theme_void() + theme(plot.background = element_rect(fill="#2c3038", color=NA))
+    return(ggplotly(p))
+  }
+  
+  selected_value <- df %>%
+    filter(country == input$selected_country, year == input$year_slider) %>%
+    pull(.data[[input$indicator_selector]])
+  
+  if (length(selected_value) == 0 || is.na(selected_value)) {
+    p <- ggplot() + 
+      labs(title = paste("No hi ha dades per a", input$selected_country, "l'any", input$year_slider)) +
+      theme_void() + theme(plot.background = element_rect(fill="#2c3038", color=NA))
+    return(ggplotly(p))
+  }
+  
+  # Determina la regió i calcula la mitjana regional
+  region_name <- country_info$region[1]
+  if(is.na(region_name)) { region_name <- "Sense Regió" }
+
+  comparison_data <- df %>%
+    filter(region == country_info$region[1], year == input$year_slider) %>%
+    summarise(mean_value = mean(.data[[input$indicator_selector]], na.rm = TRUE))
+  
+  # Prepara les dades per al gràfic
+  plot_data <- data.frame(
+    name = c(input$selected_country, paste("Mitjana:", region_name)),
+    value = c(selected_value, comparison_data$mean_value)
+  )
+  
+  # Crea el gràfic amb les etiquetes centrades
+  p <- ggplot(plot_data, aes(y = reorder(name, value), x = value, fill = name)) +
+    geom_col(width = 0.6) +
+    # Línia clau modificada: posicionem l'etiqueta a la meitat del valor
+    geom_text(aes(x = value / 2, label = round(value, 2)), 
+              hjust = 0.5,  # Centrem el text en aquesta posició
+              size = 5, 
+              color = "#2c3038", 
+              fontface = "bold") +
+    coord_cartesian(xlim = c(0, max(plot_data$value, na.rm = TRUE) * 1.05)) +
+    scale_fill_manual(values = c("#ffc6a9", "#b6d9e2")) +
+    labs(x = names(numeric_indicators)[numeric_indicators == input$indicator_selector],
+         y = "") +
+    theme_dark_custom() +
+    theme(legend.position = "none",
+          axis.text.y = element_text(face = "bold", size = 12),
+          axis.ticks.y = element_blank(),
+          axis.line.y = element_blank(),
+          panel.grid.major.y = element_blank())
+  
+  ggplotly(p, tooltip = c("y", "x")) %>% 
+    config(displayModeBar = FALSE) %>%
+    layout(
+      plot_bgcolor = "#2c3038",
+      paper_bgcolor = "#2c3038"
+    )
+})
+```
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Relació entre les Variables Seleccionades
+
+```{r}
+renderPlotly({
+  req(input$scatter_x, input$scatter_y, input$year_slider, input$selected_country)
+  
+  scatter_data <- df %>%
+    filter(year == input$year_slider) %>%
+    select(country, region, x_var = !!input$scatter_x, y_var = !!input$scatter_y) %>%
+    na.omit()
+  
+  highlight_data <- scatter_data %>%
+    filter(country == input$selected_country)
+  
+  if (nrow(scatter_data) == 0) {
+    p <- ggplot() + 
+      labs(title = "No hi ha dades disponibles per a la selecció actual") +
+      theme_void() + theme(plot.background = element_rect(fill="#2c3038", color=NA))
+    return(ggplotly(p))
+  }
+  
+  if(!"region" %in% names(scatter_data) || all(is.na(scatter_data$region))) {
+    scatter_data$region <- "Sense classificar"
+  }
+  
+  p <- ggplot(scatter_data, aes(x = x_var, y = y_var, color = region, text = country)) +
+    geom_point(alpha = 0.5, size = 3) +
+    geom_point(data = highlight_data, 
+               aes(x = x_var, y = y_var),    
+               fill = "white",       
+               size = 5,      
+               shape = 21,
+               stroke = 1.5) +
+    geom_smooth(method = "lm", se = FALSE, color = "white", linetype = "dashed", aes(group=1)) +
+    scale_color_brewer(palette = "Set2") +
+    labs(
+      x = names(numeric_indicators)[numeric_indicators == input$scatter_x],
+      y = names(numeric_indicators)[numeric_indicators == input$scatter_y],
+      color = "Regió"
+    ) +
+    theme_dark_custom() +
+    theme(legend.position = "bottom")
+  
+  ggplotly(p, tooltip = c("text", "x", "y", "colour")) %>%
+    config(displayModeBar = FALSE)
+})
+```
+
+### Dades del País Seleccionat
+
+```{r}
+renderDT({
+  req(input$selected_country)
+  
+  country_data <- df %>%
+    filter(country == input$selected_country) %>%
+    select(year, life_expectancy, share, gdp_per_capita, political_stability, 
+           rule_of_law, tertiary_education, unemployment, undernourishment) %>%
+    arrange(desc(year))
+  
+  if(nrow(country_data) == 0) {
+    return(datatable(data.frame(Missatge = "No hi ha dades disponibles per aquest país"),
+                    options = list(dom = 't'), class = 'cell-border stripe', rownames = FALSE))
+  }
+  
+  colnames(country_data) <- c("Any", "Esperança vida", "% Emigració", "PIB per càpita", 
+                             "Estabilitat política", "Estat de dret", "Educació terciària",
+                             "Taxa atur", "Desnutrició")
+  
+  datatable(country_data, 
+            rownames = FALSE,
+            options = list(dom = 't',
+                           paging = FALSE,
+                           scrollX = TRUE),
+            class = 'cell-border stripe') %>%
+    formatRound(columns = 2:9, digits = 2) %>%
+    formatStyle(columns = 1:9, 
+                backgroundColor = '#2c3038', 
+                color = '#e0e0e0')
+}, server = FALSE)
+```

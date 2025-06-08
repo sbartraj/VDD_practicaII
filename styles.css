@@ -1,0 +1,297 @@
+/* --- styles.css para Flexdashboard --- */
+
+/* Font de Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+
+/* Estilo general del cuerpo */
+body {
+  font-family: 'Roboto', sans-serif !important;
+  background-color: #22252a !important;
+  color: #e0e0e0 !important;
+}
+
+/* Navbar superior */
+.navbar-inverse {
+  background-color: #1a1d22 !important;
+  border-color: #444 !important;
+}
+
+.navbar-inverse .navbar-brand {
+  color: #61dafb !important;
+  font-weight: 300;
+  letter-spacing: 1px;
+}
+
+.navbar-inverse .navbar-nav > li > a {
+  color: #e0e0e0 !important;
+  transition: all 0.2s ease-in-out;
+}
+
+.navbar-inverse .navbar-nav > li > a:hover {
+  color: #61dafb !important;
+}
+
+/* --- MODIFICACIÓ: Estil de la pestanya seleccionada --- */
+.navbar-inverse .navbar-nav > .active > a,
+.navbar-inverse .navbar-nav > .active > a:hover,
+.navbar-inverse .navbar-nav > .active > a:focus {
+  background-color: transparent !important;
+  color: #61dafb !important;
+  box-shadow: inset 0 -3px 0 #61dafb; /* Línia inferior per indicar selecció */
+}
+
+/* Título y subtítulo del dashboard */
+.dashboard-title {
+  color: #61dafb !important;
+}
+
+.dashboard-subtitle {
+  color: #888 !important;
+}
+
+/* Sidebar */
+.section.sidebar {
+  background-color: #2c3038 !important;
+  border-right: 1px solid #444 !important;
+}
+
+.section.sidebar h4 {
+  color: #61dafb !important;
+  font-weight: 400;
+  margin-top: 20px;
+  margin-bottom: 15px;
+}
+
+/* Inputs en el sidebar */
+.form-group label {
+  color: #b0b0b0 !important;
+  font-weight: 400;
+}
+
+.form-control {
+  background-color: #383c44 !important;
+  border: 1px solid #555 !important;
+  color: #e0e0e0 !important;
+}
+
+.form-control:focus {
+  background-color: #444850 !important;
+  border-color: #61dafb !important;
+  color: #e0e0e0 !important;
+  box-shadow: 0 0 0 0.2rem rgba(97, 218, 251, 0.25) !important;
+}
+
+.selectize-input {
+  background-color: #383c44 !important;
+  border: 1px solid #555 !important;
+  color: #e0e0e0 !important;
+}
+
+.selectize-dropdown {
+  background-color: #383c44 !important;
+  border: 1px solid #555 !important;
+  color: #e0e0e0 !important;
+}
+
+.selectize-dropdown-content .option {
+  color: #e0e0e0 !important;
+}
+
+.selectize-dropdown-content .option:hover {
+  background-color: #61dafb !important;
+  color: #ffffff !important;
+}
+
+/* Slider styling */
+.irs-bar {
+  background: linear-gradient(to bottom, #61dafb 0%, #4bacc6 100%) !important;
+  border-top: 1px solid #4bacc6 !important;
+  border-bottom: 1px solid #4bacc6 !important;
+}
+
+.irs-bar-edge {
+  background: #61dafb !important;
+  border: 1px solid #4bacc6 !important;
+}
+
+.irs-single, .irs-from, .irs-to {
+  background: #4bacc6 !important;
+  color: #ffffff !important;
+}
+
+.irs-grid-text {
+  color: #b0b0b0 !important;
+}
+
+.irs-line {
+  background: #555 !important;
+}
+
+/* Títulos de secciones */
+.chart-title {
+  color: #e0e0e0 !important;
+  font-weight: 400;
+  text-align: center;
+}
+
+/* Value boxes (si se usan) */
+.value-box {
+  background-color: #2c3038 !important;
+  color: #e0e0e0 !important;
+  border: 1px solid #444 !important;
+}
+
+.value-box .value {
+  color: #61dafb !important;
+}
+
+.value-box .caption {
+  color: #b0b0b0 !important;
+}
+
+/* Tablas DataTables */
+.dataTables_wrapper {
+  color: #e0e0e0 !important;
+}
+
+.dataTables_info, .dataTables_length label, .dataTables_paginate {
+  color: #b0b0b0 !important;
+}
+
+.dataTables_filter label {
+  color: #b0b0b0 !important;
+}
+
+.dataTables_filter input {
+  background-color: #383c44 !important;
+  border: 1px solid #555 !important;
+  color: #e0e0e0 !important;
+}
+
+/* Leaflet map styling */
+.leaflet-container {
+  background: #22252a !important;
+  border-radius: 5px;
+}
+
+.leaflet-control-zoom a {
+  background-color: #2c3038 !important;
+  color: #e0e0e0 !important;
+  border: 1px solid #444 !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background-color: #61dafb !important;
+  color: #ffffff !important;
+}
+
+/* --- MODIFICACIÓ: Estil de la llegenda horitzontal --- */
+.custom-legend {
+  background-color: rgba(44, 48, 56, 0.9) !important;
+  color: #e0e0e0 !important;
+  border-radius: 5px !important;
+  padding: 6px 12px !important;
+  font: 12px/1.5 'Roboto', sans-serif !important;
+  box-shadow: 0 0 15px rgba(0,0,0,0.2) !important;
+  border: 1px solid #555 !important;
+}
+
+.custom-legend-title {
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: #ffffff;
+}
+
+/* Chart containers */
+.chart-wrapper {
+  background-color: #2c3038 !important;
+  border-radius: 8px !important;
+  border: 1px solid #444 !important;
+  padding: 10px !important;
+}
+
+/* Flexdashboard specific */
+.content-wrapper, .content {
+  background-color: #22252a !important;
+}
+
+.chart-title {
+  background-color: transparent !important; /* Fer transparent el fons del títol */
+  color: #e0e0e0 !important;
+  border-bottom: 1px solid #444 !important;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+/* Scrollbars personalizados */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #2c3038;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #61dafb;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4bacc6;
+}
+
+/* HR separators in sidebar */
+hr {
+  border-color: #444 !important;
+  margin: 20px 0 !important;
+}
+
+/* --- MODIFICACIÓ: Estils del Modal 'About' --- */
+.modal-content {
+  background-color: #2c3038 !important;
+  color: #e0e0e0 !important;
+  border: 1px solid #444 !important;
+  border-radius: 8px;
+}
+.modal-header {
+  border-bottom: 1px solid #444 !important;
+}
+.modal-header .close {
+  color: #fff !important;
+  opacity: 0.8;
+  text-shadow: none;
+}
+.modal-header .close:hover {
+  color: #61dafb !important;
+  opacity: 1;
+}
+.modal-title {
+  color: #61dafb !important;
+  font-weight: bold;
+}
+.modal-body p, .modal-body li {
+  line-height: 1.6;
+}
+.modal-body strong {
+  color: #61dafb !important;
+}
+
+/* --- Estil personalitzat per al botó del diccionari --- */
+.btn-custom-grey {
+  background-color: #444850;
+  color: #b0b0b0;
+  border-color: #555;
+  font-weight: 400;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-custom-grey:hover {
+  background-color: #555962;
+  color: #ffffff;
+  border-color: #666;
+}
+
+.btn-custom-grey:focus, .btn-custom-grey.focus {
+  box-shadow: 0 0 0 0.2rem rgba(130, 138, 145, 0.5);
+}
