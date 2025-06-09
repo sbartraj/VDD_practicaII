@@ -300,7 +300,11 @@ Aquesta eina està dissenyada per ajudar a usuaris com estudiants, analistes, pe
 ---
 
 **Autor:** Sergi Bartra Juan | **Estudis:** Visualització de dades (UOC) | Juny de 2025
+
+**Repositori del Codi:** [Veure a GitHub](https://github.com/sbartraj/VDD_practicaII)
+
 </div>
+
 
 
 Panorama Global - Mapa i Rànquing
